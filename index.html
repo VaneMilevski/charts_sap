@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Excel Chart Generator - Lieferstatus Auftrag</title>
+
+    <!-- Include SheetJS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.1/xlsx.full.min.js"></script>
+
+    <!-- Include Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 20px;
+        display: flex;
+        justify-content: center;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      /* Container for the left-side elements (File input and chart selection) */
+      #left-container {
+        width: 100%;
+        max-width: 400px; /* Limit the max width */
+        margin-bottom: 20px;
+      }
+
+      /* File Upload */
+      #file-input {
+        width: 100%;
+        margin-bottom: 20px;
+      }
+
+      /* Chart selection (Select Dropdown) */
+      #chart-selection {
+        margin-bottom: 20px;
+      }
+
+      /* Loading */
+      #loading {
+        display: none;
+        font-size: 20px;
+        color: blue;
+      }
+
+      /* Center the chart container and make it smaller */
+      .chart-container {
+        width: 80%; /* Set width to 80% of the page */
+        max-width: 600px; /* Limit the max width to 600px */
+        margin: 20px auto; /* Center the chart container */
+        padding: 20px 0;
+      }
+
+      canvas {
+        width: 100% !important; /* Make canvas take up 100% width of its container */
+        height: auto !important; /* Keep aspect ratio intact */
+      }
+
+      #total-container {
+        text-align: center;
+        font-size: 20px;
+        font-weight: bold;
+        margin-top: 20px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="left-container">
+      <h3>Upload Excel File to View Charts</h3>
+
+      <!-- File Upload -->
+      <input type="file" id="file-input" accept=".xlsx, .xls" />
+      <div id="loading">Processing file... Please wait.</div>
+
+      <!-- Chart Selection (Select Dropdown) -->
+      <div id="chart-selection">
+        <label for="chart-select">Select Chart:</label>
+        <select id="chart-select">
+          <option value="lieferstatus">Lieferstatus Auftrag</option>
+          <option value="sapstatus">SAP Status Auftrag</option>
+          <option value="sapstatusProduktionsauftrag">
+            SAP Status Produktionsauftrag
+          </option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Chart Containers -->
+    <div
+      id="lieferstatus-chart"
+      class="chart-container"
+      style="display: none"
+    ></div>
+    <div
+      id="sapstatus-chart"
+      class="chart-container"
+      style="display: none"
+    ></div>
+    <div
+      id="sapstatusProduktionsauftrag-chart"
+      class="chart-container"
+      style="display: none"
+    ></div>
+
+    <!-- Total Count Display -->
+    <div id="total-container">Total Count: <span id="total-count">0</span></div>
+
+    <script>
+      let chartInstances = {}; // Store chart instances
+      let excelData = null; // Store parsed Excel data
+      let totalCounts = {
+        // Store total counts for each chart
+        lieferstatus: 0,
+        sapstatus: 0,
+        sapstatusProduktionsauftrag: 0,
+      };
+
+      // File input event listener
+      document
+        .getElementById("file-input")
+        .addEventListener("change", handleFile, false);
+
+      // Chart selection dropdown change listener
+      document
+        .getElementById("chart-select")
+        .addEventListener("change", handleChartSelection, false);
+
+      function handleFile(event) {
+        const file = event.target.files[0];
+        if (!file) {
+          alert("Please select a file.");
+          return;
+        }
+
+        document.getElementById("loading").style.display = "block";
+
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const data = e.target.result;
+
+          try {
+            // Read the Excel file
+            const workbook = XLSX.read(data, { type: "binary" });
+            const sheetName = workbook.SheetNames[0]; // Use the first sheet
+            const sheet = workbook.Sheets[sheetName];
+
+            excelData = XLSX.utils.sheet_to_json(sheet);
+
+            if (excelData.length === 0) {
+              alert("The Excel file has no data.");
+              return;
+            }
+
+            // Log the data to ensure it is parsed correctly
+            console.log("Parsed Excel Data:", excelData);
+
+            // Generate all charts
+            generateLieferstatusChart(excelData);
+            generateSAPStatusChart(excelData);
+            generateSAPStatusProduktionsauftragChart(excelData); // Generate new chart for SAP Status Produktionsauftrag
+
+            // Show the default chart (Lieferstatus Auftrag) and set the count right away
+            document.getElementById("lieferstatus-chart").style.display =
+              "block";
+            document.getElementById("sapstatus-chart").style.display = "none";
+            document.getElementById(
+              "sapstatusProduktionsauftrag-chart"
+            ).style.display = "none";
+            document.getElementById("total-count").innerText =
+              totalCounts.lieferstatus; // Update total count for Lieferstatus
+          } catch (error) {
+            console.error("Error reading the Excel file:", error);
+            alert("There was an error processing the file.");
+          } finally {
+            document.getElementById("loading").style.display = "none";
+          }
+        };
+        reader.readAsBinaryString(file);
+      }
+
+      function handleChartSelection() {
+        const selectedChart = document.getElementById("chart-select").value;
+
+        // Hide all charts
+        document.getElementById("lieferstatus-chart").style.display = "none";
+        document.getElementById("sapstatus-chart").style.display = "none";
+        document.getElementById(
+          "sapstatusProduktionsauftrag-chart"
+        ).style.display = "none";
+
+        // Show the selected chart
+        if (selectedChart === "lieferstatus") {
+          document.getElementById("lieferstatus-chart").style.display = "block";
+          document.getElementById("total-count").innerText =
+            totalCounts.lieferstatus; // Update the total count
+        } else if (selectedChart === "sapstatus") {
+          document.getElementById("sapstatus-chart").style.display = "block";
+          document.getElementById("total-count").innerText =
+            totalCounts.sapstatus; // Update the total count
+        } else if (selectedChart === "sapstatusProduktionsauftrag") {
+          document.getElementById(
+            "sapstatusProduktionsauftrag-chart"
+          ).style.display = "block";
+          document.getElementById("total-count").innerText =
+            totalCounts.sapstatusProduktionsauftrag; // Update the total count
+        }
+      }
+
+      function generateLieferstatusChart(data) {
+        // Define the allowed Lieferstatus Auftrag values
+        const allowedStatuses = [
+          "abruf",
+          "Projektierung Plan in Werkstatt",
+          "geliefert",
+          "eingeplant",
+          "Projektierung Plan an EVU",
+          "Parametrierung getestet",
+          "storniert",
+          "fest",
+          "SchutzprufÃ¼ng fertig",
+          "Freigabe EVU Ã¼berfÃ¤llig",
+          "Projectirung offen",
+          "Parametrierung offen",
+        ];
+
+        const count = {};
+        let statusColumnFound = false;
+
+        data.forEach((item) => {
+          for (let key in item) {
+            if (key.toLowerCase().includes("lieferstatus auftrag")) {
+              statusColumnFound = true;
+              const status = item[key];
+              if (status) {
+                const normalizedStatus = status.trim().toLowerCase();
+                if (allowedStatuses.includes(normalizedStatus)) {
+                  if (count[normalizedStatus]) {
+                    count[normalizedStatus]++;
+                  } else {
+                    count[normalizedStatus] = 1;
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        if (!statusColumnFound) {
+          alert("No 'Lieferstatus Auftrag' column found in the file.");
+          return;
+        }
+
+        const chartLabels = Object.keys(count);
+        const chartValues = Object.values(count);
+
+        if (chartValues.every((value) => value === 0)) {
+          alert("No data found for Lieferstatus Auftrag.");
+          return;
+        }
+
+        totalCounts.lieferstatus = chartValues.reduce(
+          (total, value) => total + value,
+          0
+        ); // Update total count for Lieferstatus
+
+        const newCanvas = document.createElement("canvas");
+        document.getElementById("lieferstatus-chart").innerHTML = ""; // Clear previous chart
+        document.getElementById("lieferstatus-chart").appendChild(newCanvas);
+        const ctx = newCanvas.getContext("2d");
+
+        chartInstances.lieferstatus = new Chart(ctx, {
+          type: "doughnut",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                data: chartValues,
+                backgroundColor: [
+                  "#FF6384",
+                  "#36A2EB",
+                  "#FFCE56",
+                  "#4BC0C0",
+                  "#9966FF",
+                  "#FF9F40",
+                  "#FF5733",
+                  "#33FF57",
+                  "#57FF33",
+                  "#5733FF",
+                  "#FF33FF",
+                  "#33FFFF",
+                ],
+                borderColor: "#fff",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "top",
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (tooltipItem) {
+                    return tooltipItem.label + ": " + tooltipItem.raw;
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function generateSAPStatusChart(data) {
+        // Define the allowed SAP Status values
+        const sapStatuses = ["offen", "geschlossen", "storniert"];
+
+        const count = {};
+        let sapStatusColumnFound = false;
+
+        data.forEach((item) => {
+          for (let key in item) {
+            // Check for the column with "SAP Status" in the name
+            if (key.toLowerCase().includes("sap status")) {
+              sapStatusColumnFound = true;
+              const status = item[key];
+
+              if (status) {
+                // Normalize the status by removing prefixes like "A" or "PA"
+                const normalizedStatus = status
+                  .trim()
+                  .toLowerCase()
+                  .replace(/^(a|pa)\s*/i, "");
+
+                // If the normalized status is valid, count it
+                if (sapStatuses.includes(normalizedStatus)) {
+                  if (count[normalizedStatus]) {
+                    count[normalizedStatus]++;
+                  } else {
+                    count[normalizedStatus] = 1;
+                  }
+                }
+              }
+            }
+          }
+        });
+
+        if (!sapStatusColumnFound) {
+          alert("No 'SAP Status' column found in the file.");
+          return;
+        }
+
+        const chartLabels = Object.keys(count);
+        const chartValues = Object.values(count);
+
+        if (chartValues.every((value) => value === 0)) {
+          alert("No data found for SAP Status.");
+          return;
+        }
+
+        totalCounts.sapstatus = chartValues.reduce(
+          (total, value) => total + value,
+          0
+        ); // Update total count for SAP Status
+
+        const newCanvas = document.createElement("canvas");
+        document.getElementById("sapstatus-chart").innerHTML = ""; // Clear previous chart
+        document.getElementById("sapstatus-chart").appendChild(newCanvas);
+        const ctx = newCanvas.getContext("2d");
+
+        chartInstances.sapstatus = new Chart(ctx, {
+          type: "pie",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                data: chartValues,
+                backgroundColor: ["#FF5733", "#33FF57", "#FF33FF"],
+                borderColor: "#fff",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "top",
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (tooltipItem) {
+                    return tooltipItem.label + ": " + tooltipItem.raw;
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+
+      function generateSAPStatusProduktionsauftragChart(data) {
+        const statusOptions = ["eingeplant", "freigegeben", "geschlossen"];
+        const count = {
+          eingeplant: 0,
+          freigegeben: 0,
+          geschlossen: 0,
+        };
+
+        let statusColumnFound = false;
+
+        // Iterate through each row in the data
+        data.forEach((item) => {
+          for (let key in item) {
+            // Check for columns with SAP Status in the name
+            if (key.toLowerCase().includes("sap status")) {
+              statusColumnFound = true;
+              const status = (item[key] || "").trim().toLowerCase(); // Normalize the status value
+
+              // Remove the "A " or "PA " prefix before comparing
+              const normalizedStatus = status.replace(/^(a|pa)\s*/i, "").trim();
+
+              // Check if the normalized status is valid
+              if (statusOptions.includes(normalizedStatus)) {
+                count[normalizedStatus]++;
+              }
+            }
+          }
+        });
+
+        // If no matching column found, alert the user
+        if (!statusColumnFound) {
+          alert("No 'SAP Status' column found in the file.");
+          return;
+        }
+
+        // Prepare data for the chart
+        const chartLabels = Object.keys(count);
+        const chartValues = Object.values(count);
+
+        // If no valid statuses were found, alert the user
+        if (chartValues.every((value) => value === 0)) {
+          alert("No data found for SAP Status Produktionsauftrag.");
+          return;
+        }
+
+        totalCounts.sapstatusProduktionsauftrag = chartValues.reduce(
+          (total, value) => total + value,
+          0
+        ); // Update total count for SAP Status Produktionsauftrag
+
+        // Create and render the chart
+        const newCanvas = document.createElement("canvas");
+        document.getElementById("sapstatusProduktionsauftrag-chart").innerHTML =
+          ""; // Clear previous chart
+        document
+          .getElementById("sapstatusProduktionsauftrag-chart")
+          .appendChild(newCanvas);
+        const ctx = newCanvas.getContext("2d");
+
+        chartInstances.sapstatusProduktionsauftrag = new Chart(ctx, {
+          type: "pie",
+          data: {
+            labels: chartLabels,
+            datasets: [
+              {
+                data: chartValues,
+                backgroundColor: ["#FF5733", "#33FF57", "#FF33FF"],
+                borderColor: "#fff",
+                borderWidth: 1,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                position: "top",
+              },
+              tooltip: {
+                callbacks: {
+                  label: function (tooltipItem) {
+                    return tooltipItem.label + ": " + tooltipItem.raw;
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+    </script>
+  </body>
+</html>
